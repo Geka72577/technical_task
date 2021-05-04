@@ -1,0 +1,77 @@
+- hosts: all
+  become: yes
+  become_method: sudo
+  gather_facts: yes
+  remote_user: centos
+  vars:
+    ansible_python_interpreter: /usr/bin/python3.6
+
+  tasks: 
+  - name: Upgrade all packages via dnf
+    dnf: name=* state=latest
+
+  - name: Disable selinux at next reboot
+    selinux:
+      state: disabled
+    ignore_errors: true
+
+  - name: Set selinux in permissive mode until the machine is rebooted
+    shell: setenforce 0
+    ignore_errors: true
+
+  - lineinfile:
+      path: /etc/selinux/config
+      regexp: '^SELINUX='
+      state: present
+      line: 'SELINUX=disabled'
+
+  - name: Install EPEL dnf repository
+    dnf: name=epel-release state=latest
+
+  - name: Install prerequisite packages
+    dnf:
+      name: "{{ packages }}"
+    vars:
+      packages:
+      - yum-utils
+      - device-mapper-persistent-data
+      - lvm2
+      - python38-pip
+
+  - name: Set up docker repo
+    command: "yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo"
+    args:
+      creates: /etc/yum.repos.d/docker-ce.repo
+                                                          
+                                
+  - name: Install docker packages
+    dnf:
+      name: "{{ packages }}"
+    vars:
+      packages:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+ 
+  - name: Install python module for docker
+    pip:
+      name: "{{ packages }}"
+      state: present
+    vars:
+      packages:
+      - docker-py   
+                                              
+  - name: Start and enable docker daemon
+    systemd:
+      name: docker
+      state: started
+      enabled: yes
+                                     
+  - name: Run nginx container
+    docker_container:
+      name: nginx
+      image: nginx
+      state: started
+      restart_policy: always
+      ports:
+        - "80:80"
